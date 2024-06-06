@@ -9,7 +9,6 @@ from processing import get_iot_lon_lat_range
 from tools.files import get_dir_from_json
 from tools import log
 import matplotlib.pyplot as plt
-from matplotlib.offsetbox import AnchoredText
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import matplotlib
@@ -17,9 +16,9 @@ matplotlib.use('TkAgg')
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
 import numpy as np
-from datetime import datetime
 import pandas as pd
 import xarray as xr
+import os
 
 lon_range, lat_range = get_iot_lon_lat_range()
 meridians = [90, 100, 110, 120]
@@ -404,8 +403,8 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     
     ax2 = plt.subplot(2, 2, 2)
     ax2.bar(np.arange(0, len(p0_big_ci)), p0_big_ci, color=colors0_ci[i0_big_ci], zorder=5)
-    ax2.set_ylim([0, 40])
-    ax2.set_yticks(np.arange(0, 45, 5))
+    ax2.set_ylim([0, 55])
+    ax2.set_yticks(np.arange(0, 55, 5))
     ax2.set_ylabel('% particles arriving')
     
     ax2.set_xticks(np.arange(0, len(rivers_ci)))
@@ -434,8 +433,8 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
 
     ax4 = plt.subplot(2, 2, 4)
     ax4.bar(np.arange(0, len(p0_big_cki)), p0_big_cki, color=colors0_cki[i0_big_cki], zorder=5)
-    ax4.set_ylim([0, 40])
-    ax4.set_yticks(np.arange(0, 45, 5))
+    ax4.set_ylim([0, 55])
+    ax4.set_yticks(np.arange(0, 55, 5))
     ax4.set_ylabel('% particles arriving')
     
     ax4.set_xticks(np.arange(0, len(rivers_cki)))
@@ -454,6 +453,18 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     
     if output_path:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+        # write results to txt file for later reference if needed
+        output_path_txt = f'{os.path.splitext(output_path)[0]}.txt'
+        with open(output_path_txt, 'w') as f:
+            f.write('CI:')
+            for i in range(len(rivers_ci)):
+                f.write(f'\n{rivers_ci[i]}, {p0_big_ci[i]}, {waste0_ci[i0_big_ci[i]]}')
+            f.write('\n')
+            f.write('\nCKI:')
+            for i in range(len(rivers_cki)):
+                f.write(f'\n{rivers_cki[i]}, {p0_big_cki[i]}, {waste0_cki[i0_big_cki[i]]}')
+    
     if show == True:
         plt.show()
     else:
@@ -542,18 +553,44 @@ def figure4_seasonality(ds_particles:xr.Dataset,
         plt.close()
 
 if __name__ == '__main__':
-    description = 'hycom_ww3_b10_r70'
-    title = 'Ocean currents & Stokes drift\n Beaching $\lambda_{b} = 10$, $\lambda_{r} = 70$'
+    plot_f1 = False
+    plot_f2 = False
+    plot_f3 = True
+    plot_f4 = True
+    plot_f5 = False
     
-    input_path = f'{get_dir_from_json("pts_processed")}iot_particles_{description}.nc'
+    b = [None, None, None, 10, 10]
+    r = [None, None, None, 70, 270]
+    forcing = ['hycom', 'hycom_ww3', 'hycom_cfsr', 'hycom_ww3', 'hycom_ww3']
+    basetitle = ['Ocean currents', 'Ocean currents & Stokes drift', 'Ocean currents & 3% wind',
+                 None, 'Ocean currents & Stokes drift']
     
-    # figure1_overview(rivers=['solo', 'brantas', 'tanduy', 'citarum'],
-    #                  cities=['Jakarta', 'Bandung', 'Surabaya', 'Surakarta'], output_path='plots/fig1.jpg', show=False)
+    if plot_f1 == True:
+        figure1_overview(rivers=['solo', 'brantas', 'tanduy', 'citarum'],
+                        cities=['Jakarta', 'Bandung', 'Surabaya', 'Surakarta'], output_path='plots/fig1.jpg', show=False)
     
-    # figure2_samples(output_path='plots/fig2.jpg', show=False)
+    if plot_f2 == True:
+        figure2_samples(output_path='plots/fig2.jpg', show=False)
     
-    ds_particles = xr.load_dataset(input_path)
-    # figure3_sources(ds_particles, title=title, output_path=f'plots/fig3_{description}.jpg', show=False)
-    
-    figure4_seasonality(ds_particles, rivers=['Solo', 'Brantas'],
-                        output_path=f'plots/fig4_{description}.jpg', show=False)
+    if plot_f3 == True or plot_f4 == True:
+        # for i in range(len(forcing)):
+        for i in [len(forcing)-1]:
+            description = f'{forcing[i]}_b{b[i]}_r{r[i]}'
+            if basetitle[i] == None:
+                title = ''
+            else:
+                if b[i] == None:
+                    title = f'{basetitle[i]}, no beaching'
+                else:
+                    title = f'{basetitle[i]}\n Beaching $\lambda_b$ = {b[i]}, $\lambda_r$ = {r[i]}'
+        
+            input_path = f'{get_dir_from_json("pts_processed")}iot_particles_{description}.nc'
+        
+            ds_particles = xr.load_dataset(input_path)
+        
+            if plot_f3 == True:
+                figure3_sources(ds_particles, title=title, output_path=f'plots/fig3_{description}.jpg', show=False)
+            
+            if plot_f4 == True:
+                figure4_seasonality(ds_particles, rivers=['Solo', 'Brantas'],
+                                    output_path=f'plots/fig4_{description}.jpg', show=False)
