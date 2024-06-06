@@ -11,8 +11,6 @@ from tools import log
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-import matplotlib
-matplotlib.use('TkAgg')
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
 import numpy as np
@@ -573,9 +571,12 @@ if __name__ == '__main__':
         figure2_samples(output_path='plots/fig2.jpg', show=False)
     
     if plot_f3 == True or plot_f4 == True:
-        # for i in range(len(forcing)):
-        for i in [len(forcing)-1]:
-            description = f'{forcing[i]}_b{b[i]}_r{r[i]}'
+        for i in range(len(forcing)):
+            if b[i] == None:
+                description = forcing[i]
+            else:
+                description = f'{forcing[i]}_b{b[i]}_r{r[i]}'
+                
             if basetitle[i] == None:
                 title = ''
             else:
