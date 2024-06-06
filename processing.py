@@ -108,13 +108,18 @@ def particles_plot_cycler(ds:xr.Dataset, t_interval=1):
     fig = plot_cycler(single_plot, time)
     plt.show()
 
-def get_l_particles_in_box(ds:xr.Dataset, box:dict, any=True) -> np.ndarray[bool]:
+def get_l_particles_in_box(ds:xr.Dataset, box:dict, any=True, beached=False) -> np.ndarray[bool]:
     '''
     Finds particles that have been in a box (defined by lon_range and lat_range list)
     at any time.
     '''
     l_lon = np.logical_and(box['lon_range'][0] <= ds.lon.values, ds.lon.values <= box['lon_range'][1])
     l_lat = np.logical_and(box['lat_range'][0] <= ds.lat.values, ds.lat.values <= box['lat_range'][1])
+    
+    if beached == True:
+        l_lon = np.logical_and(l_lon, ds.beached.values == 1)
+        l_lat = np.logical_and(l_lat, ds.beached.values == 1)
+    
     if any == True:
         l_box = np.any(np.logical_and(l_lon, l_lat), axis=1)
     else:
@@ -127,9 +132,9 @@ def _get_particle_release_time_box(ds:xr.Dataset, l_box:np.ndarray[bool]) -> np.
     time_release = ds.time.values[t_release[l_box]]
     return time_release
 
-def _get_particle_entry_time_box(ds:xr.Dataset, box:dict) -> np.ndarray[datetime]:
+def _get_particle_entry_time_box(ds:xr.Dataset, box:dict, beached=False) -> np.ndarray[datetime]:
     
-    l_box = get_l_particles_in_box(ds, box, any=False)
+    l_box = get_l_particles_in_box(ds, box, any=False, beached=False)
     p_box, t_box = np.where(l_box)
     _, i_sort = np.unique(p_box, return_index=True)
     t_entry = t_box[i_sort]
@@ -137,10 +142,11 @@ def _get_particle_entry_time_box(ds:xr.Dataset, box:dict) -> np.ndarray[datetime
     time_entry = ds.time[t_entry]
     return np.array(time_entry)
 
-def get_n_particles_per_month_release_arrival(ds:xr.Dataset, l_box:np.ndarray[bool], island:dict):
+def get_n_particles_per_month_release_arrival(ds:xr.Dataset, l_box:np.ndarray[bool], island:dict,
+                                              beached=False):
     release_time = _get_particle_release_time_box(ds, l_box)
     release_months = np.array([x.month for x in pd.to_datetime(release_time)])
-    entry_time = _get_particle_entry_time_box(ds, island)
+    entry_time = _get_particle_entry_time_box(ds, island, beached=beached)
     entry_months = np.array([x.month for x in pd.to_datetime(entry_time)])
     months = np.arange(1,13,1)
     n_release = []
@@ -180,8 +186,8 @@ def _get_original_source_based_on_lon0_lat0(lon0:np.ndarray[float], lat0:np.ndar
     yearly_waste = np.sum(iot_sources.waste[i_closest], axis=1)
     return lon, lat, yearly_waste
 
-def get_main_sources_at_island(ds:xr.Dataset, island:dict) -> tuple[np.ndarray, np.ndarray]:
-    l_box = get_l_particles_in_box(ds, island)
+def get_main_sources_at_island(ds:xr.Dataset, island:dict, beached=False) -> tuple[np.ndarray, np.ndarray]:
+    l_box = get_l_particles_in_box(ds, island, beached=beached)
     if np.any(l_box):
         lon0, lat0, p0 = _get_main_sources_lon_lat_n_particles(ds, l_box)
     else:
@@ -241,6 +247,6 @@ if __name__ == '__main__':
     
     cki, ci = get_island_boxes_from_toml()
     lon0_cki, lat0_cki, waste0_cki = get_main_sources_at_island(ds, cki)
-    _, p_waste0_cki = get_sorted_percentage_big_sources(lon0_cki, lat0_cki, waste0_cki, output_path=f'plots/cki_sources_{description}.txt')
+    _, p_waste0_cki = get_sorted_percentage_big_sources(lon0_cki, lat0_cki, waste0_cki, output_path=f'plots/processing/cki_sources_{description}.txt')
     lon0_ci, lat0_ci, waste0_ci = get_main_sources_at_island(ds, ci)
-    _, p_waste0_ci = get_sorted_percentage_big_sources(lon0_ci, lat0_ci, waste0_ci, output_path=f'plots/ci_sources_{description}.txt')
+    _, p_waste0_ci = get_sorted_percentage_big_sources(lon0_ci, lat0_ci, waste0_ci, output_path=f'plots/processing/ci_sources_{description}.txt')
