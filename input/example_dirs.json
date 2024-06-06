@@ -1,0 +1,6 @@
+{
+    "hycom_input": "path/to/hycom/surface/currents/",
+    "pts_output": "path/to/save/parcels/pts/results/",
+    "pts_processed": "path/to/processed/pts/results/",
+    "pts_postprocessed": "path/to/postprocessed/pts/results/"
+}
