@@ -159,10 +159,10 @@ if __name__ == '__main__':
     input_dir = get_dir_from_json('hycom_input')
     input_dir_s = get_dir_from_json('ww3_input')
     
-    beaching_timescale_days = 10 # Onink et al: 100 days as max, here using [10, 100]
-    resuspension_timescale_days = 70 # Hinanta et al: between 69-273 days (also used by Onink et al), here using [70, 270]
+    beaching_timescale_days = 100 # Onink et al: 100 days as max, here using [1, 10, 100]
+    resuspension_timescale_days = 70 # Hinanta et al: between 69-273 days (also used by Onink et al), here using [70, 270], other papers used 200
     
-    output_path = f'{get_dir_from_json("pts_output")}iot_hycom_ww3_b10_r70.nc'
+    output_path = f'{get_dir_from_json("pts_output")}iot_hycom_ww3_b100_r70.nc'
     
     start_date = datetime(2008, 1, 1)
     end_date = datetime(2009, 12, 31)   

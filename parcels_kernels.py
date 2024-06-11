@@ -5,7 +5,7 @@ def delete_particle(particle, fieldset, time):
     particle.delete()
 
 def AdvectionRK4_Beaching(particle, fieldset, time):
-    # Code adapted from AdvectionRK4 https://oceanparcels.org/gh-pages/html/_modules/parcels/application_kernels/advection.html#AdvectionRK4
+    # Code from https://github.com/VeckoTheGecko/ocean-plastic-honours
     if particle.beached == 0.0:
         (u1, v1) = fieldset.UV[particle]
         lon1, lat1 = (particle.lon + u1*.5*particle.dt, particle.lat + v1*.5*particle.dt)
@@ -18,8 +18,7 @@ def AdvectionRK4_Beaching(particle, fieldset, time):
         particle.lat += (v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
 
 def DiffusionUniformKh_Beaching(particle, fieldset, time):
-    # Code adapted from AdvectionRK4 https://oceanparcels.org/gh-pages/html/_modules/parcels/application_kernels/advection.html#AdvectionRK4
-    # Wiener increment with zero mean and std of sqrt(dt)
+    # Code from https://github.com/VeckoTheGecko/ocean-plastic-honours
     if particle.beached == 0.0:
         dWx = ParcelsRandom.normalvariate(0, math.sqrt(math.fabs(particle.dt)))
         dWy = ParcelsRandom.normalvariate(0, math.sqrt(math.fabs(particle.dt)))
@@ -35,6 +34,7 @@ def OninkBeachingKernel(particle, fieldset, time):
     """
     Beaches the particle if it is within one gridcell of the land.
     """
+    # Code from https://github.com/VeckoTheGecko/ocean-plastic-honours
     particle.land_value = fieldset.land[particle] # ie. if land = 0, in ocean. If 0 < land < 1, in beaching region. If land = 1, on land (collided with coast).
     proba_beach = fieldset.beaching_constant
     proba_dt = 1.0 - math.exp(- particle.dt / proba_beach) # Converting to probability to apply for each timestep
@@ -45,15 +45,17 @@ def OninkResusKernel(particle, fieldset, time):
     """
     Beaches the particle if it is within one gridcell of the land.
     """
+    # Code from https://github.com/VeckoTheGecko/ocean-plastic-honours
     proba_resus = fieldset.resuspension_constant
     proba_dt = 1.0 - math.exp(- particle.dt / proba_resus) # Converting to probability to apply for each timestep
-    if particle.beached == 1.0 and ParcelsRandom.random() < proba_dt: # ie. particle is floating and is in beaching region
+    if particle.beached == 1.0 and ParcelsRandom.random() < proba_dt: # ie. particle is beached
         particle.beached = 0.0
 
 def BorderKernel(particle, fieldset, time):
     """
     If a particle directly is close to land, it gets a nudge out to the ocean
     """
+    # Code from https://github.com/VeckoTheGecko/ocean-plastic-honours
     if fieldset.land[particle] > 0.9:
         right = math.floor(fieldset.land[time, particle.depth, particle.lat, particle.lon + 1_000])
         left = math.floor(fieldset.land[time, particle.depth, particle.lat, particle.lon - 1_000])
