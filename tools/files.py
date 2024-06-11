@@ -21,8 +21,9 @@ def get_daily_files_in_time_range(input_dir:str,
                                   start_date:datetime,
                                   end_date:datetime,
                                   file_ext:str,
-                                  timeformat='%Y%m%d'):
-    all_files = get_files_in_dir(input_dir, file_ext)
+                                  timeformat='%Y%m%d',
+                                  return_full_path=True):
+    all_files = get_files_in_dir(input_dir, file_ext, return_full_path=return_full_path)
     ndays = (end_date-start_date).days+1
     files = []
     for n in range(ndays):
