@@ -3,6 +3,7 @@ from plastic_sources import get_iot_sources
 from plot_tools.interactive_tools import plot_cycler
 from plot_tools.basic_maps import plot_basic_map
 from plot_tools.general import plot_box
+from tools.ocean import Grid
 from tools.files import get_dir_from_json
 from tools.coordinates import get_index_closest_point
 from datetime import datetime
@@ -55,6 +56,45 @@ def process_parcels_netcdf(input_path:str, output_path:str):
         coords=dict(
             pid=('pid', pid),
             time=('time', time)
+        )
+    )
+    ds_new.to_netcdf(output_path)
+    log.info(f'Wrote processed parcels file to: {output_path}')
+
+def process_particle_density(input_path:str, output_path:str,
+                             lon_range=None, lat_range=None, dx=0.2):
+    ds = xr.load_dataset(input_path)
+    if lon_range == None:
+        lon_range, _ = get_iot_lon_lat_range()
+    if lat_range == None:
+        _, lat_range = get_iot_lon_lat_range()
+    grid = Grid(dx, lon_range, lat_range)
+    
+    total_particles = np.zeros((len(ds.time)))
+    density = np.zeros((len(ds.time), grid.lat_size, grid.lon_size))
+    shape_2d_density = density[0, :, :].shape
+    
+    lon_index, lat_index = grid.get_index(ds.lon.values, ds.lat.values)
+    for t in range(len(ds.time)):
+        density_1d = density[t, :, :].flatten()
+        l_nonan = np.logical_and(~np.isnan(lon_index[:, t]), ~np.isnan(lat_index[:, t]))
+        x = (lon_index[l_nonan, t]).astype('int')
+        y = (lat_index[l_nonan, t]).astype('int')
+        index_1d = np.ravel_multi_index(np.array([y, x]), shape_2d_density)
+        np.add.at(density_1d, index_1d, 1)
+        density[t, :, :] = density_1d.reshape(shape_2d_density)
+        total_particles[t] += sum((~np.isnan(ds.lon[:, :t+1])).any(axis=1))
+    
+    # write output
+    ds_new = xr.Dataset(
+        data_vars=dict(
+            density=(['time', 'lat', 'lon'], density),
+            total_particles=(['time'], total_particles)
+        ),
+        coords=dict(
+            time=('time', ds.time.values),
+            lon=('lon', grid.lon),
+            lat=('lat', grid.lat)
         )
     )
     ds_new.to_netcdf(output_path)
@@ -235,18 +275,43 @@ def get_sorted_percentage_big_sources(lon0:np.ndarray[float],
     return i_sort[i_big], percentage_waste0_big
     
 if __name__ == '__main__':
-    description = 'hycom_ww3_b10_r270'
-    input_path = f'{get_dir_from_json("pts_output")}iot_{description}.nc'
-    output_path = f'{get_dir_from_json("pts_processed")}iot_particles_{description}.nc'
+    b = [10, None, None, None, 10, 1, 1, 100, 100]
+    r = [70, None, None, None, 270, 70, 270, 70, 270]
+    forcing = ['hycom_ww3', 'hycom', 'hycom_ww3', 'hycom_cfsr', 'hycom_ww3', 'hycom_ww3',
+               'hycom_ww3', 'hycom_ww3', 'hycom_ww3']
     
-    if not os.path.exists(output_path):
-        process_parcels_netcdf(input_path, output_path)
-    ds = xr.load_dataset(output_path)
+    write_sources = False
     
-    # particles_plot_cycler(ds)
-    
-    cki, ci = get_island_boxes_from_toml()
-    lon0_cki, lat0_cki, waste0_cki = get_main_sources_at_island(ds, cki)
-    _, p_waste0_cki = get_sorted_percentage_big_sources(lon0_cki, lat0_cki, waste0_cki, output_path=f'plots/processing/cki_sources_{description}.txt')
-    lon0_ci, lat0_ci, waste0_ci = get_main_sources_at_island(ds, ci)
-    _, p_waste0_ci = get_sorted_percentage_big_sources(lon0_ci, lat0_ci, waste0_ci, output_path=f'plots/processing/ci_sources_{description}.txt')
+    for i in range(len(b)):
+        if b[i] == None:
+            description = forcing[i]
+        else:
+            description = f'{forcing[i]}_b{b[i]}_r{r[i]}'
+        
+        input_path = f'{get_dir_from_json("pts_output")}iot_{description}.nc'
+        output_path = f'{get_dir_from_json("pts_processed")}iot_particles_{description}.nc'
+        output_path_density = f'{get_dir_from_json("pts_processed")}iot_density_{description}.nc'
+        
+        # process particles
+        if not os.path.exists(output_path):
+            process_parcels_netcdf(input_path, output_path)
+        else:
+            log.info(f'Particles already processed, skipping: {output_path}')
+        
+        # write main sources
+        if write_sources == True:
+            ds = xr.load_dataset(output_path)
+            
+            cki, ci = get_island_boxes_from_toml()
+            lon0_cki, lat0_cki, waste0_cki = get_main_sources_at_island(ds, cki)
+            _, p_waste0_cki = get_sorted_percentage_big_sources(lon0_cki, lat0_cki, waste0_cki,
+                                                                output_path=f'plots/processing/cki_sources_{description}.txt')
+            lon0_ci, lat0_ci, waste0_ci = get_main_sources_at_island(ds, ci)
+            _, p_waste0_ci = get_sorted_percentage_big_sources(lon0_ci, lat0_ci, waste0_ci,
+                                                               output_path=f'plots/processing/ci_sources_{description}.txt')
+            
+        # process particle density
+        if not os.path.exists(output_path_density):
+            process_particle_density(output_path, output_path_density)
+        else:
+            log.info(f'Density already processed, skipping: {output_path_density}')
