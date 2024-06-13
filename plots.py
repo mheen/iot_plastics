@@ -3,6 +3,7 @@ from processing import get_l_particles_in_box, get_main_sources_at_island, get_s
 from processing import get_n_particles_per_month_release_arrival
 from tools.observations import read_iot_plastic_type_counts, get_monthly_plastic_samples
 from tools.land import get_island_boxes_from_toml
+from tools.timeseries import add_month_to_time
 from plot_tools.basic_maps import plot_basic_map
 from plot_tools.general import plot_box, add_subtitle, color_y_axis
 from processing import get_iot_lon_lat_range
@@ -11,12 +12,16 @@ from tools import log
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
 import os
+import string
+from scipy.interpolate import RegularGridInterpolator
 
 lon_range, lat_range = get_iot_lon_lat_range()
 meridians = [90, 100, 110, 120]
@@ -138,7 +143,43 @@ def _find_n_rivers_contributing_x_percent(p0_big:np.ndarray[float], x_percent:fl
         if p >= x_percent:
             return n
     raise ValueError(f'Not enough rivers to contribute {x_percent}.')
+
+def _thin_current_field(lon:np.ndarray, lat:np.ndarray,
+                        u:np.ndarray, v:np.ndarray,
+                        thin:float) -> tuple:
+            if thin is not None:
+                i = np.arange(0, u.shape[0], thin)
+                j = np.arange(0, u.shape[1], thin)
+                u = u[i][:, j]
+                v = v[i][:, j]
+                lon = lon[j]
+                lat = lat[i]
+            return lon, lat, u, v
+
+def _load_current_data(input_path:str) -> tuple:
+    ds = xr.load_dataset(input_path)
+    lon = ds.lon.values
+    lat = ds.lat.values
+    u = ds.u.values
+    v = ds.v.values
+    return lon, lat, u, v
+
+def _add_hycom_and_ww3_data(input_path_hycom:str, input_path_ww3:str) -> tuple:
+    lon_hycom, lat_hycom, u_hycom, v_hycom = _load_current_data(input_path_hycom)
+    lon_ww3, lat_ww3, u_ww3, v_ww3 = _load_current_data(input_path_ww3)
     
+    interp_u = RegularGridInterpolator((lat_ww3, lon_ww3), u_ww3, bounds_error=False, fill_value=None)
+    interp_v = RegularGridInterpolator((lat_ww3, lon_ww3), v_ww3, bounds_error=False, fill_value=None)
+
+    xx, yy = np.meshgrid(lon_hycom, lat_hycom)
+    u_ww3_interp = interp_u((yy, xx))
+    v_ww3_interp = interp_v((yy, xx))
+    
+    u = u_hycom + u_ww3_interp
+    v = v_hycom + v_ww3_interp
+    
+    return lon_hycom, lat_hycom, u, v
+       
 def figure1_overview(output_path=None,
                      show=True,
                      river_dir = get_dir_from_json('indonesia_rivers'),
@@ -150,12 +191,12 @@ def figure1_overview(output_path=None,
 
     cki, ci = get_island_boxes_from_toml()
     lon_range_java = [102.0, 116.0]
-    lat_range_java = [-9.5, -4.0]
+    lat_range_java = [-10.0, -2.0]
     meridians_java = [105.0, 110.0, 115.0]
-    parallels_java = [-8.5, -7.0, -5.5]
+    parallels_java = [-10.0, -8.0, -6.0, -4.0, -2.0]
 
     fig = plt.figure(figsize=(7, 6))
-    plt.subplots_adjust(hspace=0.05)
+    plt.subplots_adjust(hspace=0.1, wspace=0.1)
     plt.rcParams['font.size'] = 8
     plt.rcParams['axes.labelsize'] = 6
     # (a) Overview NE monsoon
@@ -167,7 +208,7 @@ def figure1_overview(output_path=None,
     
     # (b) Overview SW monsoon
     ax3 = plt.subplot(2, 2, 2, projection=ccrs.PlateCarree())
-    ax3 = plot_basic_map(ax3, lon_range, lat_range, meridians, parallels, xmarkers='off', ymarkers='off')
+    ax3 = plot_basic_map(ax3, lon_range, lat_range, meridians, parallels, ymarkers='off')
     plot_box(ax3, cki['lon_range'], cki['lat_range'])
     plot_box(ax3, ci['lon_range'], ci['lat_range'])
     add_subtitle(ax3, '(b) SW monsoon (JJA) currents')
@@ -214,11 +255,15 @@ def figure1_overview(output_path=None,
             ax2.scatter(df['lon'].values[l_city], df['lat'].values[l_city], marker='o',
                         c=city_color, s=8, edgecolors='k', zorder=6)
     
-    # move legend and ax4
-    l.set_bbox_to_anchor((-0.2, -0.2))
+    # move legend and ax4 and ax3
+    l.set_bbox_to_anchor((-0.3, -0.15))
     l1, b1, w1, h1 = ax1.get_position().bounds
     l4, b4, w4, h4 = ax4.get_position().bounds
     ax4.set_position([l1, b4, w4, h4])
+    
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    l3, b3, w3, h3 = ax3.get_position().bounds
+    ax3.set_position([l2, b3, w3, h3])
     
     if output_path:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -339,7 +384,7 @@ def figure2_samples(output_path=None, show=True):
     ax55.set_ylim([0, 14])
     ax55.set_yticks(np.arange(0, 16, 2))
     ax55.set_ylabel('Beach clean-ups (##/month)')
-    color_y_axis(ax44, '#adadad', 'right')
+    color_y_axis(ax55, '#adadad', 'right')
     
     add_subtitle(ax5, '(e) Plastic collected CKI')
     
@@ -549,23 +594,90 @@ def figure4_seasonality(ds_particles:xr.Dataset,
         plt.show()
     else:
         plt.close()
+        
+def figure5_density(ds_density:xr.Dataset,
+                    hycom_dir=get_dir_from_json('hycom_means'),
+                    ww3_dir=get_dir_from_json('ww3_means'),
+                    thin=15, scale=7,
+                    months=np.arange(1, 13, 1),
+                    n_rows=4, n_cols=3,
+                    output_path=None, show=True):
+    
+    cki, ci = get_island_boxes_from_toml()
+    
+    fig = plt.figure(figsize=(8, 11))
+
+    for i, month in enumerate(months):
+        start_date = datetime(2008, month, 1)
+        end_date = add_month_to_time(start_date, 1)
+        ds_t = ds_density.sel(time=slice(start_date, end_date))
+        z = np.mean(ds_t.density.values, axis=0)
+        z[z==0] = np.nan
+        lon = ds_t.lon.values
+        lat = ds_t.lat.values
+        
+        input_path_hycom = f'{hycom_dir}iot_{start_date.strftime("%b")}.nc'
+        input_path_ww3 = f'{ww3_dir}iot_{start_date.strftime("%b")}.nc'
+        lon_c, lat_c, u, v = _add_hycom_and_ww3_data(input_path_hycom, input_path_ww3)
+        lon_c, lat_c, u, v = _thin_current_field(lon_c, lat_c, u, v, thin)
+        
+        ax = plt.subplot(n_rows, n_cols, i+1, projection=ccrs.PlateCarree())
+        ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+        ax.tick_params(axis='both', which='both', length=0, labelsize=8)
+        if np.remainder(i+1, n_cols) != 1: # not first column
+            ax.set_yticklabels([])
+        if i+1 <= n_rows*n_cols-n_cols-(n_rows*n_cols-len(months)): # not last row
+            ax.set_xticklabels([])
+        
+        cmap = plt.get_cmap('gist_heat_r')
+        new_cmap = LinearSegmentedColormap.from_list('cm', cmap(np.linspace(0.1, 1.0, 50)))
+        c = ax.pcolormesh(lon, lat, z, cmap=new_cmap, vmin=1, vmax=50)
+        
+        q = ax.quiver(lon_c, lat_c, u, v, scale=scale)
+        
+        plot_box(ax, cki['lon_range'], cki['lat_range'])
+        plot_box(ax, ci['lon_range'], ci['lat_range'])
+
+        if i == n_cols*(n_rows-1):
+            l, b, w, h = ax.get_position().bounds
+            cax = fig.add_axes([l, b-0.07, (n_cols+0.16*n_cols)*w, 0.02])
+            cbar = plt.colorbar(c, orientation='horizontal', ticks=[1, 10, 20, 30, 40, 50], cax=cax)
+            cbar.set_label('Particle density (#/grid cell)')
+
+            qk = ax.quiverkey(q, X=0.16, Y=-0.18, U=1, label='1 m/s: mean surface currents and Stokes drift', labelpos='E')
+            
+        add_subtitle(ax, f'({string.ascii_lowercase[i]}) {start_date.strftime("%B")}')
+    
+    if output_path:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
 
 if __name__ == '__main__':
     plot_f1 = False
     plot_f2 = False
-    plot_f3 = True
-    plot_f4 = True
-    plot_f5 = False
+    plot_f3 = False
+    plot_f4 = False
+    plot_f5 = True
     
-    b = [None, None, None, 10, 10]
-    r = [None, None, None, 70, 270]
+    b = [None, None, None, 10, 10, 1, 1, 100, 100]
+    r = [None, None, None, 70, 270, 70, 270, 70, 270]
     forcing = ['hycom', 'hycom_ww3', 'hycom_cfsr', 'hycom_ww3', 'hycom_ww3']
     basetitle = ['Ocean currents', 'Ocean currents & Stokes drift', 'Ocean currents & 3% wind',
-                 None, 'Ocean currents & Stokes drift']
+                 None, 'Ocean currents & Stokes drift', 'Ocean currents & Stokes drift',
+                 'Ocean currents & Stokes drift', 'Ocean currents & Stokes drift',
+                 'Ocean currents & Stokes drift']
+    
+    rivers = ['solo', 'brantas', 'tanduy', 'wai_sekampung']
+    rivers_full = ['Solo', 'Brantas', 'Ci Tanduy', 'Wai Sekampung']
     
     if plot_f1 == True:
-        figure1_overview(rivers=['solo', 'brantas', 'tanduy', 'citarum'],
-                        cities=['Jakarta', 'Bandung', 'Surabaya', 'Surakarta'], output_path='plots/fig1.jpg', show=False)
+        figure1_overview(rivers=rivers,
+                        cities=['Jakarta', 'Bandung', 'Surabaya', 'Surakarta', 'Bandar Lampung'],
+                        output_path='plots/fig1.jpg', show=False)
     
     if plot_f2 == True:
         figure2_samples(output_path='plots/fig2.jpg', show=False)
@@ -593,5 +705,10 @@ if __name__ == '__main__':
                 figure3_sources(ds_particles, title=title, output_path=f'plots/fig3_{description}.jpg', show=False)
             
             if plot_f4 == True:
-                figure4_seasonality(ds_particles, rivers=['Solo', 'Brantas'],
+                figure4_seasonality(ds_particles, rivers=rivers_full,
                                     output_path=f'plots/fig4_{description}.jpg', show=False)
+                
+    if plot_f5 == True:
+        input_path_density = f'{get_dir_from_json("pts_processed")}iot_density_hycom_ww3_b10_r70.nc'
+        ds_density = xr.load_dataset(input_path_density)
+        figure5_density(ds_density, output_path=f'plots/fig5.jpg', show=False)
