@@ -1,6 +1,7 @@
 from plastic_sources import get_iot_sources
 from processing import get_l_particles_in_box, get_main_sources_at_island, get_sorted_percentage_big_sources
 from processing import get_n_particles_per_month_release_arrival
+from processing import _get_particle_release_time_box, _get_particle_entry_time_box, _get_particle_release_locations_box
 from tools.observations import read_iot_plastic_type_counts, get_monthly_plastic_samples
 from tools.land import get_island_boxes_from_toml
 from tools.timeseries import add_month_to_time
@@ -143,6 +144,31 @@ def _find_n_rivers_contributing_x_percent(p0_big:np.ndarray[float], x_percent:fl
         if p >= x_percent:
             return n
     raise ValueError(f'Not enough rivers to contribute {x_percent}.')
+
+def _get_median_particle_tracks_from_main_sources(ds_particles:xr.Dataset, box:dict, l_box:np.ndarray[bool],
+                                                  lon0_sources:np.ndarray[float], lat0_sources:np.ndarray[float],
+                                                  i0_big:np.ndarray[int], n_sources:int):
+            if len(i0_big) < n_sources:
+                n_sources = len(i0_big)
+            
+            t_release = _get_particle_release_time_box(ds_particles, l_box)
+            t_entry = _get_particle_entry_time_box(ds_particles, box)
+            
+            lon0, lat0 = _get_particle_release_locations_box(ds_particles, l_box)
+            
+            lons_med = []
+            lats_med = []
+            for i in range(n_sources):
+                l_source = np.logical_and(lon0 == lon0_sources[i0_big[i]], lat0 == lat0_sources[i0_big[i]])
+                dts = t_entry[l_source]-t_release[l_source]
+                i_times = np.argsort(dts)
+                i_med = i_times[np.floor(len(i_times)/2).astype(int)] # middle (or halfway when even) value as median
+                lons = ds_particles.lon.sel(time=slice(t_release[l_source][i_med], t_entry[l_source][i_med])).values[l_box, :][l_source, :][i_med, :]
+                lats = ds_particles.lat.sel(time=slice(t_release[l_source][i_med], t_entry[l_source][i_med])).values[l_box, :][l_source, :][i_med, :]
+                lons_med.append(lons)
+                lats_med.append(lats)
+                
+            return lons_med, lats_med
 
 def _thin_current_field(lon:np.ndarray, lat:np.ndarray,
                         u:np.ndarray, v:np.ndarray,
@@ -426,14 +452,23 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     fig = plt.figure(figsize=(10, 8))
     plt.subplots_adjust(wspace=0.1, hspace=0.4)
     tracks_color = '#2e4999'
+    highlighted_tracks_color = '#e58d2a'
     
     # (a) sources CI map
     ax1 = plt.subplot(2, 2, 1, projection=ccrs.PlateCarree())
     ax1 = plot_basic_map(ax1, lon_range, lat_range, meridians, parallels, xmarkers='off')
     plot_box(ax1, ci['lon_range'], ci['lat_range'])
+    
     i_box_ci = np.where(l_box_ci)[0]
-    for i in i_box_ci:
+    # all particle tracks arriving
+    for i in i_box_ci:    
         ax1.plot(ds_particles.lon.values[i, :], ds_particles.lat.values[i, :], color=tracks_color, linewidth=0.1, zorder=0)
+    
+    # highlighted median particle track from 3 main sources
+    lons_med_ci, lats_med_ci = _get_median_particle_tracks_from_main_sources(ds_particles, ci, l_box_ci, lon0_ci, lat0_ci, i0_big_ci, 3)
+    for i in range(len(lons_med_ci)):
+        ax1.plot(lons_med_ci[i], lats_med_ci[i], color=highlighted_tracks_color, linewidth=0.7, zorder=1)
+
     ax1.scatter(lon0_ci[i_sort_ci], lat0_ci[i_sort_ci], marker='o',
                 c=colors0_ci[i_sort_ci], s=np.array(sizes0_ci[i_sort_ci])*6, linewidths=edgewidths0_ci[i_sort_ci],
                 edgecolors='k', zorder=4)
@@ -461,9 +496,17 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     ax3 = plt.subplot(2, 2, 3, projection=ccrs.PlateCarree())
     ax3 = plot_basic_map(ax3, lon_range, lat_range, meridians, parallels)
     plot_box(ax3, cki['lon_range'], cki['lat_range'])
+    
+    # all particles arriving
     i_box_cki = np.where(l_box_cki)[0]
     for i in i_box_cki:
         ax3.plot(ds_particles.lon.values[i, :], ds_particles.lat.values[i, :], color=tracks_color, linewidth=0.1, zorder=0)
+    
+    # highlighted median particle track from 3 main sources
+    lons_med_cki, lats_med_cki = _get_median_particle_tracks_from_main_sources(ds_particles, cki, l_box_cki, lon0_cki, lat0_cki, i0_big_cki, 3)
+    for i in range(len(lons_med_cki)):
+        ax3.plot(lons_med_cki[i], lats_med_cki[i], color=highlighted_tracks_color, linewidth=0.7, zorder=1)
+        
     ax3.scatter(lon0_cki[i_sort_cki], lat0_cki[i_sort_cki], marker='o',
                 c=colors0_cki[i_sort_cki], s=np.array(sizes0_cki[i_sort_cki])*6, linewidths=edgewidths0_cki[i_sort_cki],
                 edgecolors='k', zorder=4)
@@ -659,15 +702,15 @@ def figure5_density(ds_density:xr.Dataset,
 if __name__ == '__main__':
     plot_f1 = False
     plot_f2 = False
-    plot_f3 = False
+    plot_f3 = True
     plot_f4 = False
-    plot_f5 = True
+    plot_f5 = False
     
-    b = [None, None, None, 10, 10, 1, 1, 100, 100]
-    r = [None, None, None, 70, 270, 70, 270, 70, 270]
-    forcing = ['hycom', 'hycom_ww3', 'hycom_cfsr', 'hycom_ww3', 'hycom_ww3']
-    basetitle = ['Ocean currents', 'Ocean currents & Stokes drift', 'Ocean currents & 3% wind',
-                 None, 'Ocean currents & Stokes drift', 'Ocean currents & Stokes drift',
+    b = [10, None, None, None, 10, 1, 1, 100, 100]
+    r = [70, None, None, None, 270, 70, 270, 70, 270]
+    forcing = ['hycom_ww3', 'hycom', 'hycom_ww3', 'hycom_cfsr', 'hycom_ww3', 'hycom_ww3', 'hycom_ww3', 'hycom_ww3', 'hycom_ww3']
+    basetitle = [None, 'Ocean currents', 'Ocean currents & Stokes drift', 'Ocean currents & 3% wind',
+                 'Ocean currents & Stokes drift', 'Ocean currents & Stokes drift',
                  'Ocean currents & Stokes drift', 'Ocean currents & Stokes drift',
                  'Ocean currents & Stokes drift']
     
