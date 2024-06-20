@@ -492,6 +492,13 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     
     add_subtitle(ax2, '(b) River contributions to CI')
     
+    ax22 = ax2.twinx()
+    p_to_part_ci = np.unique(waste0_ci[i0_big_ci]/p0_big_ci)[0]
+    ax22.set_ylim([0, 55])
+    ax22.set_yticks(np.arange(0, 60, 10))
+    ax22.set_yticklabels(np.ceil(np.arange(0, 60, 10)*p_to_part_ci).astype(int))
+    ax22.set_ylabel('# particles arriving')
+    
     # (c) sources CKI map
     ax3 = plt.subplot(2, 2, 3, projection=ccrs.PlateCarree())
     ax3 = plot_basic_map(ax3, lon_range, lat_range, meridians, parallels)
@@ -529,6 +536,13 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     ax4.tick_params('x', length=0)
     
     add_subtitle(ax4, '(d) River contributions to CKI')
+
+    ax44 = ax4.twinx()
+    p_to_part_cki = np.unique(waste0_cki[i0_big_cki]/p0_big_cki)[0]
+    ax44.set_ylim([0, 55])
+    ax44.set_yticks(np.arange(0, 60, 10))
+    ax44.set_yticklabels(np.ceil(np.arange(0, 60, 10)*p_to_part_cki).astype(int))
+    ax44.set_ylabel('# particles arriving')
 
     # legend
     legend_entries = _get_legend_entries_for_sources(sources_type='iot')
