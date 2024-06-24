@@ -686,9 +686,14 @@ def figure5_density(ds_density:xr.Dataset,
         if i+1 <= n_rows*n_cols-n_cols-(n_rows*n_cols-len(months)): # not last row
             ax.set_xticklabels([])
         
-        cmap = plt.get_cmap('gist_heat_r')
-        new_cmap = LinearSegmentedColormap.from_list('cm', cmap(np.linspace(0.1, 1.0, 50)))
-        c = ax.pcolormesh(lon, lat, z, cmap=new_cmap, vmin=1, vmax=50)
+        # cmap = plt.get_cmap('gist_heat_r')
+        # new_cmap = LinearSegmentedColormap.from_list('cm', cmap(np.linspace(0.1, 1.0, 50)))
+        ranges = [1, 10, 100, 10**3]
+        # colors = get_colormap_reds(len(ranges)-1)
+        colors = ['#fece6b', '#d00d20','#830026']
+        cm = LinearSegmentedColormap.from_list('cm_log_density',colors,N=6)
+        norm = BoundaryNorm(ranges, ncolors=len(ranges)-1)
+        c = ax.pcolormesh(lon, lat, z, cmap=cm, norm=norm)
         
         q = ax.quiver(lon_c, lat_c, u, v, scale=scale)
         
@@ -698,8 +703,9 @@ def figure5_density(ds_density:xr.Dataset,
         if i == n_cols*(n_rows-1):
             l, b, w, h = ax.get_position().bounds
             cax = fig.add_axes([l, b-0.07, (n_cols+0.16*n_cols)*w, 0.02])
-            cbar = plt.colorbar(c, orientation='horizontal', ticks=[1, 10, 20, 30, 40, 50], cax=cax)
-            cbar.set_label('Particle density (#/grid cell)')
+            cbar = plt.colorbar(c, orientation='horizontal', ticks=ranges, cax=cax)
+            cbar.set_label('Particle density (# / 0.5$^o$ grid cell)')
+            cbar.set_ticklabels(['1', '10', '100', '10$^3$'])
 
             qk = ax.quiverkey(q, X=0.16, Y=-0.18, U=1, label='1 m/s: mean surface currents and Stokes drift', labelpos='E')
             
@@ -716,9 +722,9 @@ def figure5_density(ds_density:xr.Dataset,
 if __name__ == '__main__':
     plot_f1 = False
     plot_f2 = False
-    plot_f3 = True
+    plot_f3 = False
     plot_f4 = False
-    plot_f5 = False
+    plot_f5 = True
     
     b = [10, None, None, None, 10, 1, 1, 100, 100]
     r = [70, None, None, None, 270, 70, 270, 70, 270]

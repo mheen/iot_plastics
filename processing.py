@@ -62,7 +62,7 @@ def process_parcels_netcdf(input_path:str, output_path:str):
     log.info(f'Wrote processed parcels file to: {output_path}')
 
 def process_particle_density(input_path:str, output_path:str,
-                             lon_range=None, lat_range=None, dx=0.2):
+                             lon_range=None, lat_range=None, dx=0.5):
     ds = xr.load_dataset(input_path)
     if lon_range == None:
         lon_range, _ = get_iot_lon_lat_range()
