@@ -25,7 +25,7 @@ import string
 from scipy.interpolate import RegularGridInterpolator
 
 lon_range, lat_range = get_iot_lon_lat_range()
-meridians = [90, 100, 110, 120]
+meridians = [90, 100, 110, 120, 130, 140]
 parallels = [-20, -10, 0, 10, 20]
 
 def get_colormap_reds(n):
@@ -264,7 +264,7 @@ def figure1_overview(output_path=None,
     
     # (d) zoom Java
     ax2 = plt.subplot(2, 2, 4, projection=ccrs.PlateCarree())
-    ax2 = plot_basic_map(ax2, lon_range_java, lat_range_java, meridians_java, parallels_java)
+    ax2 = plot_basic_map(ax2, lon_range_java, lat_range_java, meridians_java, parallels_java, ymarkers='right')
     add_subtitle(ax2, '(d) Main rivers IOT waste')
     # plot rivers
     for i in range(len(rivers)):
@@ -282,7 +282,7 @@ def figure1_overview(output_path=None,
                         c=city_color, s=8, edgecolors='k', zorder=6)
     
     # move legend and ax4 and ax3
-    l.set_bbox_to_anchor((-0.3, -0.15))
+    l.set_bbox_to_anchor((-0.15, -0.15))
     l1, b1, w1, h1 = ax1.get_position().bounds
     l4, b4, w4, h4 = ax4.get_position().bounds
     ax4.set_position([l1, b4, w4, h4])
@@ -483,7 +483,7 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     ax2.bar(np.arange(0, len(p0_big_ci)), p0_big_ci, color=colors0_ci[i0_big_ci], zorder=5)
     ax2.set_ylim([0, 55])
     ax2.set_yticks(np.arange(0, 55, 5))
-    ax2.set_ylabel('% particles arriving')
+    ax2.set_ylabel('% particles arriving', fontsize=10)
     
     ax2.set_xticks(np.arange(0, len(rivers_ci)))
     ax2.set_xticklabels(rivers_ci, rotation='vertical')
@@ -547,7 +547,7 @@ def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
     # legend
     legend_entries = _get_legend_entries_for_sources(sources_type='iot')
     ax1.legend(handles=legend_entries, title='# particles', loc='upper left',
-               bbox_to_anchor=(-0.25, -0.05), ncol=3, columnspacing=0.3)
+               bbox_to_anchor=(0.0, -0.07), ncol=3, columnspacing=0.3)
     
     plt.suptitle(title, y=0.93)
     
@@ -662,7 +662,7 @@ def figure5_density(ds_density:xr.Dataset,
     
     cki, ci = get_island_boxes_from_toml()
     
-    fig = plt.figure(figsize=(8, 11))
+    fig = plt.figure(figsize=(8, 9))
 
     for i, month in enumerate(months):
         start_date = datetime(2008, month, 1)
@@ -679,7 +679,7 @@ def figure5_density(ds_density:xr.Dataset,
         lon_c, lat_c, u, v = _thin_current_field(lon_c, lat_c, u, v, thin)
         
         ax = plt.subplot(n_rows, n_cols, i+1, projection=ccrs.PlateCarree())
-        ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+        ax = plot_basic_map(ax, lon_range, lat_range, [100, 120, 140], parallels)
         ax.tick_params(axis='both', which='both', length=0, labelsize=8)
         if np.remainder(i+1, n_cols) != 1: # not first column
             ax.set_yticklabels([])
@@ -702,7 +702,7 @@ def figure5_density(ds_density:xr.Dataset,
 
         if i == n_cols*(n_rows-1):
             l, b, w, h = ax.get_position().bounds
-            cax = fig.add_axes([l, b-0.07, (n_cols+0.16*n_cols)*w, 0.02])
+            cax = fig.add_axes([l, b-0.07, (n_cols+0.14*n_cols)*w, 0.02])
             cbar = plt.colorbar(c, orientation='horizontal', ticks=ranges, cax=cax)
             cbar.set_label('Particle density (# / 0.5$^o$ grid cell)')
             cbar.set_ticklabels(['1', '10', '100', '10$^3$'])
