@@ -16,7 +16,7 @@ from tools import log
 import os
 
 def get_iot_lon_lat_range():
-    lon_range = [90., 128.]
+    lon_range = [90., 140.]
     lat_range = [-20., 20.]
     return (lon_range, lat_range)
 
@@ -309,9 +309,10 @@ if __name__ == '__main__':
             lon0_ci, lat0_ci, waste0_ci = get_main_sources_at_island(ds, ci)
             _, p_waste0_ci = get_sorted_percentage_big_sources(lon0_ci, lat0_ci, waste0_ci,
                                                                output_path=f'plots/processing/ci_sources_{description}.txt')
-            
-        # process particle density
-        if not os.path.exists(output_path_density):
-            process_particle_density(output_path, output_path_density)
-        else:
-            log.info(f'Density already processed, skipping: {output_path_density}')
+        
+        if i == 0:    
+            # process particle density
+            if not os.path.exists(output_path_density):
+                process_particle_density(output_path, output_path_density)
+            else:
+                log.info(f'Density already processed, skipping: {output_path_density}')
