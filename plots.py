@@ -1,6 +1,6 @@
 from plastic_sources import get_iot_sources
 from processing import get_l_particles_in_box, get_main_sources_at_island, get_sorted_percentage_big_sources
-from processing import get_n_particles_per_month_release_arrival
+from processing import get_n_particles_per_month_release_arrival, get_initial_particle_lon_lat
 from processing import _get_particle_release_time_box, _get_particle_entry_time_box, _get_particle_release_locations_box
 from tools.observations import read_iot_plastic_type_counts, get_monthly_plastic_samples
 from tools.land import get_island_boxes_from_toml
@@ -103,7 +103,7 @@ def _get_legend_entries_for_sources(sources_type='all') -> list:
         raise ValueError(f'Unknown sources type: {sources_type}. Valid options are "all" and "iot".')
     legend_entries = []
     for i in range(len(colors)):
-        legend_entries.append(Line2D([0],[0],marker='o',color='w',markerfacecolor=colors[i],                              
+        legend_entries.append(Line2D([0],[0],marker='o',color='w',markerfacecolor=colors[i],
                               markersize=legend_sizes[i],label=labels[i],markeredgewidth=edge_widths[i]))
     return legend_entries
 
@@ -121,7 +121,7 @@ def _match_river_locations_to_names(lon0:np.ndarray[float], lat0:np.ndarray[floa
         
     return rivers
 
-def _match_river_names_to_locations(rivers:list[str],
+def _match_river_names_to_locations(rivers:list[str], org=True,
                                     input_path='input/rivers.csv') -> tuple[np.ndarray[float], np.ndarray[float]]:
     df = pd.read_csv(input_path)
     lon = []
@@ -130,9 +130,13 @@ def _match_river_names_to_locations(rivers:list[str],
         l_river = df['name']==rivers[i]
         if np.any(l_river) == False:
             log.info(f'Did not find a river {rivers[i]}, skipping.')
-            continue    
-        lon.append(df['org_lon'].values[l_river][0])
-        lat.append(df['org_lat'].values[l_river][0])  
+            continue
+        if org == True:
+            lon.append(df['org_lon'].values[l_river][0])
+            lat.append(df['org_lat'].values[l_river][0])
+        else:
+            lon.append(df['model_lon'].values[l_river][0])
+            lat.append(df['model_lat'].values[l_river][0])
         
     return np.array(lon), np.array(lat)
 
@@ -169,6 +173,25 @@ def _get_median_particle_tracks_from_main_sources(ds_particles:xr.Dataset, box:d
                 lats_med.append(lats)
                 
             return lons_med, lats_med
+
+def _get_particle_trajectories_from_specific_source(ds_particles:xr.Dataset, l_box:np.ndarray[bool], river:str):
+    river_lon, river_lat = _match_river_names_to_locations([river], org=False)
+    
+    if l_box is not None:
+        lon0, lat0 = _get_particle_release_locations_box(ds_particles, l_box)
+    else:
+        lon0, lat0 = get_initial_particle_lon_lat(ds_particles)
+    
+    l_river = np.logical_and(np.round(lon0, 3) == np.round(river_lon, 3), np.round(lat0, 3) == np.round(river_lat, 3))
+    
+    if l_box is not None:
+        lons = ds_particles.lon.values[l_box][l_river, :]
+        lats = ds_particles.lat.values[l_box][l_river, :]
+    else:
+        lons = ds_particles.lon.values[l_river, :]
+        lats = ds_particles.lat.values[l_river, :]
+    
+    return lons, lats
 
 def _thin_current_field(lon:np.ndarray, lat:np.ndarray,
                         u:np.ndarray, v:np.ndarray,
@@ -718,13 +741,179 @@ def figure5_density(ds_density:xr.Dataset,
     else:
         plt.close()
 
+def plot_trajectories_from_source_to_island(ds_particles:xr.Dataset, river:str,
+                                            output_path=None, show=True):
+    
+    cki, ci = get_island_boxes_from_toml()
+    l_box_cki = get_l_particles_in_box(ds_particles, cki)
+    l_box_ci = get_l_particles_in_box(ds_particles, ci)
+    
+    river_lon, river_lat = _match_river_names_to_locations([river])
+    
+    fig = plt.figure(figsize=(8, 6))
+    plt.subplots_adjust(wspace=0.2)
+    tracks_color = '#2e4999'
+    
+    # (a) CI tracks
+    ax1 = plt.subplot(1, 2, 1, projection=ccrs.PlateCarree())
+    ax1 = plot_basic_map(ax1, lon_range, lat_range, meridians, parallels)
+    plot_box(ax1, ci['lon_range'], ci['lat_range'])
+    ax1.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_ci, lats_ci = _get_particle_trajectories_from_specific_source(ds_particles, l_box_ci, river)
+    
+    for i in range(lons_ci.shape[0]):
+        ax1.plot(lons_ci[i, :], lats_ci[i, :], color=tracks_color, linewidth=0.1, zorder=0)
+    
+    add_subtitle(ax1, f'(a) {river} to CI')
+    
+    # (b) CKI tracks
+    ax2 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
+    ax2 = plot_basic_map(ax2, lon_range, lat_range, meridians, parallels, ymarkers='off')
+    plot_box(ax2, cki['lon_range'], cki['lat_range'])
+    ax2.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_cki, lats_cki = _get_particle_trajectories_from_specific_source(ds_particles, l_box_cki, river)
+    
+    for i in range(lons_cki.shape[0]):
+        ax2.plot(lons_cki[i, :], lats_cki[i, :], color=tracks_color, linewidth=0.1, zorder=0)
+    
+    add_subtitle(ax2, f'(b) {river} to CKI')
+    
+    if output_path:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
+def plot_trajectories_from_source_two_simulations(ds_hycom:xr.Dataset, ds_ww3:xr.Dataset, river:str,
+                                                  output_path=None, show=True):
+
+    cki, ci = get_island_boxes_from_toml()
+    l_box_cki_hycom = get_l_particles_in_box(ds_hycom, cki)
+    l_box_ci_hycom = get_l_particles_in_box(ds_hycom, ci)
+    l_box_cki_ww3 = get_l_particles_in_box(ds_hycom, cki)
+    l_box_ci_ww3 = get_l_particles_in_box(ds_hycom, ci)
+
+    river_lon, river_lat = _match_river_names_to_locations([river])
+    
+    lons_river_hycom, lats_river_hycom = _get_particle_trajectories_from_specific_source(ds_hycom, None, river)
+    lons_river_ww3, lats_river_ww3 = _get_particle_trajectories_from_specific_source(ds_ww3, None, river)
+
+    color_all = '#2e4999'
+    color_islands = '#e58d2a'
+    
+    fig = plt.figure(figsize=(8, 6))
+    plt.subplots_adjust(wspace=0.1, hspace=0.1)
+
+    # (a) CI hycom
+    ax1 = plt.subplot(2, 2, 1, projection=ccrs.PlateCarree())
+    ax1 = plot_basic_map(ax1, lon_range, lat_range, meridians, parallels, xmarkers='off')
+    plot_box(ax1, ci['lon_range'], ci['lat_range'])
+    ax1.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_ci_hycom, lats_ci_hycom = _get_particle_trajectories_from_specific_source(ds_hycom, l_box_ci_hycom, river)
+    
+    for i in range(lons_river_hycom.shape[0]):
+        ax1.plot(lons_river_hycom[i, :], lats_river_hycom[i, :], color=color_all, linewidth=0.1, zorder=0)
+    
+    for i in range(lons_ci_hycom.shape[0]):
+        ax1.plot(lons_ci_hycom[i, :], lats_ci_hycom[i, :], color=color_islands, linewidth=0.1, zorder=1)
+    
+    add_subtitle(ax1, f'(a) {river} to CI\n   Currents')
+    
+    # (b) CI ww3
+    ax2 = plt.subplot(2, 2, 2, projection=ccrs.PlateCarree())
+    ax2 = plot_basic_map(ax2, lon_range, lat_range, meridians, parallels, xmarkers='off', ymarkers='off')
+    plot_box(ax2, ci['lon_range'], ci['lat_range'])
+    ax2.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_ci_ww3, lats_ci_ww3 = _get_particle_trajectories_from_specific_source(ds_ww3, l_box_ci_ww3, river)
+    
+    for i in range(lons_river_ww3.shape[0]):
+        ax2.plot(lons_river_ww3[i, :], lats_river_ww3[i, :], color=color_all, linewidth=0.1, zorder=0)
+    
+    for i in range(lons_ci_hycom.shape[0]):
+        ax2.plot(lons_ci_ww3[i, :], lats_ci_ww3[i, :], color=color_islands, linewidth=0.1, zorder=1)
+    
+    add_subtitle(ax2, f'(b) {river} to CI\n   Currents & Stokes')
+    
+    # (c) CKI hycom
+    ax3 = plt.subplot(2, 2, 3, projection=ccrs.PlateCarree())
+    ax3 = plot_basic_map(ax3, lon_range, lat_range, meridians, parallels)
+    plot_box(ax3, cki['lon_range'], cki['lat_range'])
+    ax3.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_cki_hycom, lats_cki_hycom = _get_particle_trajectories_from_specific_source(ds_hycom, l_box_cki_hycom, river)
+    
+    for i in range(lons_river_hycom.shape[0]):
+        ax3.plot(lons_river_hycom[i, :], lats_river_hycom[i, :], color=color_all, linewidth=0.1, zorder=0)
+    
+    for i in range(lons_cki_hycom.shape[0]):
+        ax3.plot(lons_cki_hycom[i, :], lats_cki_hycom[i, :], color=color_islands, linewidth=0.1, zorder=1)
+    
+    add_subtitle(ax3, f'(c) {river} to CKI\n   Currents')
+    
+    # (d) CKI ww3
+    ax4 = plt.subplot(2, 2, 4, projection=ccrs.PlateCarree())
+    ax4 = plot_basic_map(ax4, lon_range, lat_range, meridians, parallels, ymarkers='off')
+    plot_box(ax4, cki['lon_range'], cki['lat_range'])
+    ax4.scatter(river_lon, river_lat, marker='o', c='#830026', s=15, edgecolors='k', zorder=10)
+    
+    lons_cki_ww3, lats_cki_ww3 = _get_particle_trajectories_from_specific_source(ds_ww3, l_box_cki_ww3, river)
+    
+    for i in range(lons_river_ww3.shape[0]):
+        ax4.plot(lons_river_ww3[i, :], lats_river_ww3[i, :], color=color_all, linewidth=0.1, zorder=0)
+    
+    for i in range(lons_cki_hycom.shape[0]):
+        ax4.plot(lons_cki_ww3[i, :], lats_cki_ww3[i, :], color=color_islands, linewidth=0.1, zorder=1)
+    
+    add_subtitle(ax4, f'(d) {river} to CKI\n   Currents & Stokes')
+
+    # legend
+    legend_entries = [Line2D([0], [0], color=color_all, label='All trajectories'), Line2D([0], [0], color=color_islands, label='Trajectories reaching island')]
+    l = ax4.legend(handles=legend_entries, loc='upper right', bbox_to_anchor=(1.0, -0.15))
+
+    if output_path:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    
+    if show == True:
+        plt.show()
+    else:
+        plt.close()    
 
 if __name__ == '__main__':
     plot_f1 = False
     plot_f2 = False
     plot_f3 = False
     plot_f4 = False
-    plot_f5 = True
+    plot_f5 = False
+    
+    plot_trajectories = False
+    plot_trajectories_hycom_ww3 = True
+    
+    if plot_trajectories == True:
+        input_path = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3_b10_r70.nc'
+        ds = xr.load_dataset(input_path)
+    
+        rivers = ['Solo', 'Brantas', 'Ci Tanduy', 'Wai Sekampung']
+        for river in rivers:
+            output_path = f'plots/trajectories_{river}.jpg'
+            plot_trajectories_from_source_to_island(ds, river, output_path=output_path, show=False)
+            
+    if plot_trajectories_hycom_ww3 == True:
+        input_path_h = f'{get_dir_from_json("pts_processed")}iot_particles_hycom.nc'
+        ds_h = xr.load_dataset(input_path_h)
+        
+        input_path_w = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3.nc'
+        ds_w = xr.load_dataset(input_path_w)
+    
+        rivers = ['Ci Tanduy', 'Serayu', 'Bogowonto']
+        for river in rivers:
+            output_path = f'plots/trajectories_comparison_{river}.jpg'
+            plot_trajectories_from_source_two_simulations(ds_h, ds_w, river, output_path=output_path, show=False)
     
     b = [10, None, None, None, 10, 1, 1, 100, 100]
     r = [70, None, None, None, 270, 70, 270, 70, 270]
