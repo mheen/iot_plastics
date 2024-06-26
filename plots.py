@@ -5,7 +5,7 @@ from processing import _get_particle_release_time_box, _get_particle_entry_time_
 from tools.observations import read_iot_plastic_type_counts, get_monthly_plastic_samples
 from tools.land import get_island_boxes_from_toml
 from tools.timeseries import add_month_to_time
-from plot_tools.basic_maps import plot_basic_map
+from plot_tools.basic_maps import plot_basic_map, plot_ne_bathymetry
 from plot_tools.general import plot_box, add_subtitle, color_y_axis
 from processing import get_iot_lon_lat_range
 from tools.files import get_dir_from_json
@@ -449,9 +449,12 @@ def figure2_samples(output_path=None, show=True):
         plt.close()
     
 def figure3_sources(ds_particles:xr.Dataset, cutoff_histogram=10,
-                    output_path=None, show=True, title=''):
-    
-    cki, ci = get_island_boxes_from_toml()
+                    output_path=None, show=True, title='',
+                    cki=None, ci=None):
+    if cki is None:
+        cki, _ = get_island_boxes_from_toml()
+    if ci is None:
+        _, ci = get_island_boxes_from_toml()
     l_box_cki = get_l_particles_in_box(ds_particles, cki)
     l_box_ci = get_l_particles_in_box(ds_particles, ci)
     lon0_cki, lat0_cki, waste0_cki = get_main_sources_at_island(ds_particles, cki)
@@ -741,6 +744,43 @@ def figure5_density(ds_density:xr.Dataset,
     else:
         plt.close()
 
+def figure6_boxes(output_path=None, show=True):
+    cki, ci = get_island_boxes_from_toml()
+    
+    fig = plt.figure(figsize=(8, 6))
+    plt.subplots_adjust(wspace=0.4)
+        
+    [cki]
+    lon_range = [96.6, 97.1]
+    lat_range = [-12.3, -11.8]
+    
+    ax1 = plt.subplot(1, 2, 1, projection=ccrs.PlateCarree())
+    plot_basic_map(ax1, [ci['lon_range'][0]-0.2, ci['lon_range'][1]+0.2], [ci['lat_range'][0]-0.2, ci['lat_range'][1]+0.2],
+                   meridians=[105.2, 105.5, 105.8, 105.11], parallels=[-10.9, -10.6, -10.3, -10.0],
+                   full_resolution=True)
+    plot_ne_bathymetry(ax1, lon_range=[ci['lon_range'][0]-0.2, ci['lon_range'][1]+0.2],
+                       lat_range=[ci['lat_range'][0]-0.2, ci['lat_range'][1]+0.2])
+    plot_box(ax1, ci['lon_range'], ci['lat_range'], width=1.5)
+    add_subtitle(ax1, '(a) Box around CI')
+    
+    ax2 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
+    plot_basic_map(ax2, [cki['lon_range'][0]-0.2, cki['lon_range'][1]+0.2], [cki['lat_range'][0]-0.2, cki['lat_range'][1]+0.2],
+                   meridians=[96.4, 96.7, 97.0, 97.3], parallels=[-12.5, -12.2, -11.9, -11.6],
+                   full_resolution=True, show_reefs=True)
+    plot_ne_bathymetry(ax2, lon_range=[cki['lon_range'][0]-0.2, cki['lon_range'][1]+0.2],
+                       lat_range=[cki['lat_range'][0]-0.2, cki['lat_range'][1]+0.2])
+    plot_box(ax2, cki['lon_range'], cki['lat_range'], width=1.5)
+    add_subtitle(ax2, '(b) Box around CKI')
+    
+    if output_path:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
+
 def plot_trajectories_from_source_to_island(ds_particles:xr.Dataset, river:str,
                                             output_path=None, show=True):
     
@@ -890,30 +930,11 @@ if __name__ == '__main__':
     plot_f3 = False
     plot_f4 = False
     plot_f5 = False
+    plot_f6 = True
     
+    # SI plots
     plot_trajectories = False
-    plot_trajectories_hycom_ww3 = True
-    
-    if plot_trajectories == True:
-        input_path = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3_b10_r70.nc'
-        ds = xr.load_dataset(input_path)
-    
-        rivers = ['Solo', 'Brantas', 'Ci Tanduy', 'Wai Sekampung']
-        for river in rivers:
-            output_path = f'plots/trajectories_{river}.jpg'
-            plot_trajectories_from_source_to_island(ds, river, output_path=output_path, show=False)
-            
-    if plot_trajectories_hycom_ww3 == True:
-        input_path_h = f'{get_dir_from_json("pts_processed")}iot_particles_hycom.nc'
-        ds_h = xr.load_dataset(input_path_h)
-        
-        input_path_w = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3.nc'
-        ds_w = xr.load_dataset(input_path_w)
-    
-        rivers = ['Ci Tanduy', 'Serayu', 'Bogowonto']
-        for river in rivers:
-            output_path = f'plots/trajectories_comparison_{river}.jpg'
-            plot_trajectories_from_source_two_simulations(ds_h, ds_w, river, output_path=output_path, show=False)
+    plot_trajectories_hycom_ww3 = False
     
     b = [10, None, None, None, 10, 1, 1, 100, 100]
     r = [70, None, None, None, 270, 70, 270, 70, 270]
@@ -964,3 +985,27 @@ if __name__ == '__main__':
         input_path_density = f'{get_dir_from_json("pts_processed")}iot_density_hycom_ww3_b10_r70.nc'
         ds_density = xr.load_dataset(input_path_density)
         figure5_density(ds_density, output_path=f'plots/fig5.jpg', show=False)
+        
+    if plot_f6 == True:
+        figure6_boxes(output_path='plots/fig6.jpg', show=False)
+
+    if plot_trajectories == True:
+        input_path = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3_b10_r70.nc'
+        ds = xr.load_dataset(input_path)
+    
+        rivers = ['Solo', 'Brantas', 'Ci Tanduy', 'Wai Sekampung']
+        for river in rivers:
+            output_path = f'plots/trajectories_{river}.jpg'
+            plot_trajectories_from_source_to_island(ds, river, output_path=output_path, show=False)
+            
+    if plot_trajectories_hycom_ww3 == True:
+        input_path_h = f'{get_dir_from_json("pts_processed")}iot_particles_hycom.nc'
+        ds_h = xr.load_dataset(input_path_h)
+        
+        input_path_w = f'{get_dir_from_json("pts_processed")}iot_particles_hycom_ww3.nc'
+        ds_w = xr.load_dataset(input_path_w)
+    
+        rivers = ['Ci Tanduy', 'Serayu', 'Bogowonto']
+        for river in rivers:
+            output_path = f'plots/trajectories_comparison_{river}.jpg'
+            plot_trajectories_from_source_two_simulations(ds_h, ds_w, river, output_path=output_path, show=False)
