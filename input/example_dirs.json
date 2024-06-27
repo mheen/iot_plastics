@@ -2,5 +2,9 @@
     "hycom_input": "path/to/hycom/surface/currents/",
     "pts_output": "path/to/save/parcels/pts/results/",
     "pts_processed": "path/to/processed/pts/results/",
-    "pts_postprocessed": "path/to/postprocessed/pts/results/"
+    "pts_postprocessed": "path/to/postprocessed/pts/results/",
+    "iot_measurements": "path/to/beach/clean-up/samples/file",
+    "indonesia_rivers": "path/to/folder/with/shapefiles/of/rivers/",
+    "hycom_means": "path/to/folder/with/mean/hycom/currents/",
+    "ww3_means": "path/to/folder/with/mean/ww3/stokes/"
 }
