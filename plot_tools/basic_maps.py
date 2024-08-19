@@ -95,12 +95,21 @@ def load_ne_bathymetry(input_dir=f'{get_dir_from_json("ne")}'):
     depths = np.array(depths)[::-1]  # sort from surface to bottom
     return depths, shp_dict
 
-def plot_ne_bathymetry(ax:plt.axes, lon_range=None, lat_range=None):
+def plot_ne_bathymetry(ax:plt.axes, lon_range=None, lat_range=None,
+                       max_depth=None):
     # Load data (14.8 MB file)
     depths_str, shp_dict = load_ne_bathymetry()
 
-    # Construct a discrete colormap with colors corresponding to each depth
     depths = depths_str.astype(int)
+    if max_depth is not None:
+        l_depths = depths >= max_depth
+    else:
+        l_depths = np.ones(len(depths)).astype(bool)
+        
+    depths = depths[l_depths]
+    depths_str = depths_str[l_depths]
+    
+    # Construct a discrete colormap with colors corresponding to each depth
     N = len(depths)
     nudge = 0.01  # shift bin edge slightly to include data
     boundaries = [min(depths)] + sorted(depths+nudge)  # low to high
@@ -126,6 +135,7 @@ def plot_ne_bathymetry(ax:plt.axes, lon_range=None, lat_range=None):
     # Convert vector bathymetries to raster (saves a lot of disk space)
     # while leaving labels as vectors
     ax.set_rasterized(True)
+    return depths, colors_depths, blues_cm
 
 def add_grid(ax:plt.axes, meridians:list, parallels:list,
               xmarkers:str, ymarkers:str, draw_grid:bool) -> plt.axes:
